@@ -1,90 +1,75 @@
 import pandas as pd
-import json
 import re
+import os
 
-# Excel Read/Write Module
 def read_excel(file_path, sheet_name=0):
-    #The value 0 refers to the sheet's position (first sheet in the workbook). 
-    #Alternatively, sheet_name can be a string (e.g., "Sheet1") to specify a sheet by name.
-    """Read an Excel file into a pandas DataFrame."""
+    """Read an Excel sheet into a pandas DataFrame."""
     return pd.read_excel(file_path, sheet_name=sheet_name)
 
-def write_excel(df, file_path, sheet_name=0):
-    """Write a pandas DataFrame to an Excel file."""
-    df.to_excel(file_path, sheet_name=sheet_name, index=False)
-    #index=False prevents the DataFrame index from being written to the Excel file, keeping the output cleaner.
-
-# Rule-Matching Engine
 def apply_rules(df, config):
     """Apply rules from the configuration to the DataFrame."""
-    rules = config['rules']  # Extract the list of rules from the config dictionary
-    for index, row in df.iterrows():  # Iterate over each row in the DataFrame
-        for rule in rules:  # Iterate over each rule in the config
-            regex = rule['regex']  # Get the regex pattern for the current rule
-            # Check if column H matches the regex
-            if re.search(regex, str(row['H'])):  # If the value in column H matches the regex
-                # Apply column updates based on the rule
-                for col_rule in rule['columns']:  # Iterate over column updates in the rule
-                    column = col_rule['column']  # Target column name
-                    value = col_rule['value']  # Value to set
-                    dtype = col_rule['type']  # Data type for the value
-                    if dtype == 'int':  # If the type is integer
-                        df.at[index, column] = int(value)  # Set the column value as an integer
-                    elif dtype == 'string':  # If the type is string
-                        df.at[index, column] = str(value)  # Set the column value as a string
-                # Stop after the first matching rule (can be modified for multiple outputs)
-                break
-    return df  # Return the modified DataFrame
+    rules = config['rules']
+    for index, row in df.iterrows():
+        for rule in rules:
+            regex = rule['regex']
+            # Match regex against column H
+            if re.search(regex, str(row['H'])):
+                for col_rule in rule['columns']:
+                    column = col_rule['column']
+                    value = col_rule['value']
+                    df.at[index, column] = str(value)  # Treat all values as strings
+                break  # Apply only the first matching rule per row
+    return df
 
-def process_excel(input_file, config_file, output_file=None):
-    """Process an Excel file based on a configuration file."""
-    # Load configuration
-    with open(config_file, 'r') as f:
-        config = json.load(f)
+def process_excel(rules_file):
+    """Process Excel files based on rules defined in the rules Excel file."""
+    # Read the rules Excel file with header
+    rules_df = pd.read_excel(rules_file, header=0)
     
-    # Read Excel file
-    df = read_excel(input_file)
+    # Ensure expected columns are present
+    expected_cols = ['Input_File', 'Input_Sheet', 'Regex', 'Output_File', 'Output_Sheet']
+    if not all(col in rules_df.columns for col in expected_cols):
+        raise ValueError(f"rules.xls must contain columns: {expected_cols}")
     
-    # Apply rules
-    df_modified = apply_rules(df, config)
-    
-    # Determine output file
-    output = output_file if output_file else input_file
-    for rule in config['rules']:
-        if 'output_file' in rule and rule['output_file'] != 'same':
-            output = rule['output_file']
-            break
-    
-    # Write to Excel
-    write_excel(df_modified, output)
+    # Group rules by input and output locations
+    for (input_file, input_sheet, output_file, output_sheet), group_df in rules_df.groupby(
+        ['Input_File', 'Input_Sheet', 'Output_File', 'Output_Sheet']
+    ):
+        # Resolve relative paths to the script's directory
+        input_file = os.path.join(os.path.dirname(__file__), input_file)
+        output_file = os.path.join(os.path.dirname(__file__), output_file)
+        
+        # Read the specified input sheet
+        df = read_excel(input_file, sheet_name=input_sheet)
+        
+        # Collect rules for this group
+        rules = []
+        for _, row in group_df.iterrows():
+            regex = row['Regex']
+            columns = []
+            # Process change pairs dynamically (Change1_Column, Change1_Value, etc.)
+            col_index = 5  # Start after Input_File, Input_Sheet, Regex, Output_File, Output_Sheet
+            while col_index < len(rules_df.columns) - 1:  # Ensure pairs are available
+                col_name = rules_df.columns[col_index]
+                val_name = rules_df.columns[col_index + 1]
+                if col_name.startswith('Change') and val_name.startswith('Change'):
+                    col_value = row[col_name]
+                    val_value = row[val_name]
+                    if pd.notna(col_value) and pd.notna(val_value):
+                        columns.append({'column': col_value, 'value': val_value})
+                col_index += 2  # Move to next pair
+            if columns:
+                rules.append({'regex': regex, 'columns': columns})
+        
+        # Apply the rules to the DataFrame
+        config = {'rules': rules}
+        df_modified = apply_rules(df, config)
+        
+        # Write to the specified output sheet, preserving other sheets
+        with pd.ExcelWriter(output_file, mode='a', if_sheet_exists='replace') as writer:
+            df_modified.to_excel(writer, sheet_name=output_sheet, index=False)
 
 # Example usage
 if __name__ == "__main__":
-    # Sample configuration
-    sample_config = {
-        "rules": [
-            {
-                "regex": "test.*",
-                "columns": [
-                    {"column": "B", "value": "matched", "type": "string"},
-                    {"column": "K", "value": 456, "type": "int"}
-                ],
-                "output_file": "same"
-            },
-            {
-                "regex": "data.*",
-                "columns": [
-                    {"column": "B", "value": "data_found", "type": "string"},
-                    {"column": "K", "value": 789, "type": "int"}
-                ],
-                "output_file": "output.xls"
-            }
-        ]
-    }
-    
-    # Save sample config to file
-    with open('config.json', 'w') as f:
-        json.dump(sample_config, f)
-    
-    # Process the Excel file
-    process_excel('input.xls', 'config.json')
+    # Assume rules.xls is in the same directory as the script
+    process_excel('rules.xls')
