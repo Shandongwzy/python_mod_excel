@@ -60,3 +60,38 @@ The `rules.xls` file defines how the program processes Excel files. Create or ed
 1. **Open Command Prompt**:
    - Navigate to the directory containing `excel_processor.exe` (e.g., right-click the folder, select "Open in Terminal" or "Command Prompt").
 2. **Execute the Program**:
+   - excel_processor.exe
+3. **Check Output**:
+- The output file will be updated based on `rules.xls`.
+- A `log.txt` file is generated in the same directory, logging success (e.g., "Saved .xls to ...") or errors (e.g., invalid regex or missing files).
+4. **Troubleshooting**:
+- If no changes are applied, verify `rules.xls` (correct regex, column names, file paths).
+- Check `log.txt` for error details.
+- Ensure input file has data in the specified `Regex_Column`.
+
+## Regular Expression Guide
+Regular expressions (regex) define text patterns to match in the `Regex_Column`. The program requires valid Python regex syntax.
+
+### Simplified Usage
+- **Basic Matching**: Use literal text (e.g., `terminal` matches "terminal" exactly).
+- **Wildcard Equivalent**: Use `.*text.*` to match any text containing "text" (e.g., `.*terminal.*` matches "abc terminal def").
+- **Test Patterns**: Use tools like [regex101.com](https://regex101.com/) (select Python flavor) to validate patterns.
+
+### Common Patterns
+| Pattern         | Description                                    |
+|-----------------|------------------------------------------------|
+| `text`          | Matches exact text (e.g., `terminal`).         |
+| `.*text.*`      | Matches any string containing "text".          |
+| `^text`         | Matches strings starting with "text".          |
+| `text$`         | Matches strings ending with "text".           |
+| `text|other`    | Matches "text" or "other".                    |
+| `[0-9]`         | Matches any single digit.                     |
+| `[a-zA-Z]`      | Matches any single letter.                    |
+
+### Tips
+- **Avoid Invalid Patterns**: Do not use standalone `*` (e.g., `*terminal*` is invalid; use `.*terminal.*`).
+- **Escape Special Characters**: To match `.`, `*`, `?`, etc., prefix with `\` (e.g., `\.` matches a literal dot).
+- **Unicode Support**: Chinese characters (e.g., `端子`) are treated as literal characters and work directly.
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
